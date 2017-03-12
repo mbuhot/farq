@@ -1,2 +1,3 @@
 # farq
-Efficient Persistent Queueing for Elixir using Postgres
+
+- Efficient Persistent Queueing for Elixir using Postgres
