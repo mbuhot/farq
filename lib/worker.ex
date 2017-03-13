@@ -1,20 +1,22 @@
-defmodule Pgjob.Worker do
+defmodule Farq.Worker do
+  require Logger
+
   def start_link(repo, queue) do
     {:ok, spawn_link(__MODULE__, :loop, [repo, queue])}
   end
 
   def loop(repo, queue) do
     case work_job(repo, queue) do
-      {:ok, :done} -> wait_for_notification(queue)
+      {:ok, :done} -> Farq.Queue.wait(queue, 30_000)
       {:ok, :continue} -> :ok
-      error -> IO.inspect(error)
+      error -> Logger.error(inspect(error))
     end
     loop(repo, queue)
   end
 
   def work_job(repo, queue) do
     repo.transaction fn ->
-      case Pgjob.dequeue(repo, queue) do
+      case Farq.Queue.dequeue(repo, queue) do
         nil ->
           :done
         %{"module" => m, "function" => f, "args" => a} ->
@@ -27,25 +29,7 @@ defmodule Pgjob.Worker do
   def work_job(module, function, args) do
     apply(module, function, args)
   rescue
-    e -> IO.inspect(e)
+    e -> Logger.error(inspect(e))
   end
 
-  def wait_for_notification(queue) do
-    {:ok, ref} = Postgrex.Notifications.listen(:pgjob_listener, queue)
-    receive do
-      {:notification, _pid, _ref, ^queue, _payload} -> :ok
-    after
-      30_000 -> :ok
-    end
-    Postgrex.Notifications.unlisten(:pgjob_listener, ref)
-    clear_notifications(queue)
-  end
-
-  def clear_notifications(queue) do
-    receive do
-      {:notification, _pid, _ref, ^queue, _payload} -> clear_notifications(queue)
-    after
-      0 -> :ok
-    end
-  end
 end
